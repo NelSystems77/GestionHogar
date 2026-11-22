@@ -3,14 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>GestionHogar</title>
+  <title>Gestión Hogar</title>
   <meta name="theme-color" content="#00A862">
   <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gestión Hogar">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    /* Splash: estilos en línea para que aparezca al instante, antes de cargar el CSS */
+    #splash{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2vmin;
+      background:radial-gradient(circle at 50% 40%,#2b3d4d 0,#293A4A 45%,#1d2935 100%);color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      transition:opacity .55s ease,transform .55s ease;padding:4vmin;text-align:center}
+    #splash.hide{opacity:0;transform:scale(1.04);pointer-events:none}
+    #splash .monkey{width:min(54vmin,15rem);height:min(54vmin,15rem);object-fit:contain;
+      
+      animation:sp-pop .8s cubic-bezier(.2,1.4,.4,1) both,sp-float 2.6s ease-in-out .8s infinite;filter:drop-shadow(0 1.2vmin 2vmin rgba(0,0,0,.35))}
+    #splash h2{margin:0;font-size:clamp(2rem,9vmin,3.4rem);font-weight:800;letter-spacing:.02em;animation:sp-up .6s ease .45s both}
+    #splash h2 b{color:#3DDC97}
+    #splash p{margin:0;font-size:clamp(.95rem,3.6vmin,1.25rem);opacity:.85;animation:sp-up .6s ease .65s both}
+    #splash .by{position:absolute;bottom:calc(4vmin + env(safe-area-inset-bottom));font-size:.85rem;letter-spacing:.18em;opacity:.7;animation:sp-up .6s ease .9s both}
+    #splash .by b{color:#3DDC97}
+    #splash .load{width:min(40vmin,11rem);height:.3rem;border-radius:99px;background:rgba(255,255,255,.18);overflow:hidden;margin-top:1.5vmin;animation:sp-up .6s ease .8s both}
+    #splash .load i{display:block;height:100%;width:40%;border-radius:99px;background:#3DDC97;animation:sp-load 1.3s ease-in-out infinite}
+    @keyframes sp-pop{from{opacity:0;transform:scale(.4) rotate(-8deg)}to{opacity:1;transform:none}}
+    @keyframes sp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.6vmin)}}
+    @keyframes sp-up{from{opacity:0;transform:translateY(1.5vmin)}to{opacity:1;transform:none}}
+    @keyframes sp-load{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
+    @media(prefers-reduced-motion:reduce){#splash *{animation:none!important}#splash{transition:none}}
+  </style>
   <link rel="icon" href="icons/icon-96.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+  <div id="splash" role="img" aria-label="Gestión Hogar, cargando">
+    <img class="monkey" src="assets/monkey.png" alt="" width="384" height="384">
+    <h2>Gestión <b>Hogar</b></h2>
+    <p>Tu hogar, bajo control</p>
+    <div class="load" aria-hidden="true"><i></i></div>
+    <div class="by">by <b>NEL</b>SYSTEMS</div>
+  </div>
+  <script>try{if(sessionStorage.getItem('splashed')){document.getElementById('splash').remove()}}catch(e){}</script>
   <header class="top-bar">
     <img src="assets/logo.png" alt="" class="logo">
     <h1 id="pageTitle">GestionHogar</h1>

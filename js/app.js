@@ -59,6 +59,21 @@ async function route() {
   }
 }
 
+// Splash: se oculta cuando la app está lista, tras un mínimo para que se aprecie
+const splashStart = performance.now();
+function hideSplash() {
+  const el = document.getElementById('splash');
+  if (!el) return;
+  try { sessionStorage.setItem('splashed', '1'); } catch (e) { /* modo privado */ }
+  const go = () => {
+    el.classList.add('hide');
+    setTimeout(() => el.remove(), 700);
+  };
+  setTimeout(go, Math.max(0, 1700 - (performance.now() - splashStart)));
+  el.addEventListener('click', go, { once: true }); // tocar para saltar
+}
+setTimeout(() => document.getElementById('splash')?.remove(), 8000); // seguridad
+
 async function start() {
   try {
     await DB.init();
@@ -75,6 +90,7 @@ async function start() {
   window.addEventListener('resize', measure);
   window.addEventListener('hashchange', route);
   await route();
+  hideSplash();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 start();

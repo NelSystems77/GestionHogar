@@ -1,10 +1,10 @@
-const CACHE = 'gestionhogar-v4';
+const CACHE = 'gestionhogar-v5';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/styles.css',
   './js/app.js', './js/db.js', './js/utils.js', './js/charts.js', './js/pdf.js', './js/vendor/jspdf.umd.min.js',
   './js/modules/dashboard.js', './js/modules/finance.js', './js/modules/obligations.js',
   './js/modules/shopping.js', './js/modules/tasks.js', './js/modules/settings.js',
-  './assets/logo.png', './icons/icon-192.png', './icons/icon-512.png'
+  './assets/logo.png', './assets/monkey.png', './icons/icon-192.png', './icons/icon-512.png'
 ];
 
 self.addEventListener('install', e => {
