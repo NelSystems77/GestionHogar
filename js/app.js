@@ -11,9 +11,36 @@ const ROUTES = {
   ajustes: ['Ajustes', () => import('./modules/settings.js')]
 };
 
+export const SCALES = [90, 100, 115, 130, 150, 175, 200];
+
+// Aplica tema, tamaño de interfaz, alto contraste y modo fácil
 export function applyTheme() {
-  const t = DB.settings().theme;
-  document.documentElement.dataset.theme = t === 'auto' ? '' : t;
+  const { theme, uiScale, contrast, easyMode } = DB.settings();
+  const root = document.documentElement;
+  const set = (k, on) => (on ? root.setAttribute(k, '') : root.removeAttribute(k));
+  root.dataset.theme = theme === 'auto' ? '' : theme;
+  root.style.setProperty('--ui', (uiScale || 100) / 100);
+  set('data-contrast', contrast);
+  set('data-easy', easyMode);
+  set('data-big', (uiScale || 100) >= 140);
+  requestAnimationFrame(measure);
+}
+
+export async function setScale(v) {
+  await DB.setSetting('uiScale', v);
+  applyTheme();
+}
+export async function stepScale(dir) {
+  const cur = DB.settings().uiScale || 100;
+  const i = SCALES.reduce((b, s, k) => (Math.abs(s - cur) < Math.abs(SCALES[b] - cur) ? k : b), 0);
+  await setScale(SCALES[Math.min(SCALES.length - 1, Math.max(0, i + dir))]);
+}
+
+// Las barras superior/inferior cambian de alto con el tamaño de letra
+function measure() {
+  const r = document.documentElement.style;
+  r.setProperty('--top-h', $('.top-bar').offsetHeight + 'px');
+  r.setProperty('--nav-h', $('#nav').offsetHeight + 'px');
 }
 
 async function route() {
@@ -42,6 +69,10 @@ async function start() {
     return;
   }
   applyTheme();
+  $('#smaller').onclick = () => stepScale(-1);
+  $('#bigger').onclick = () => stepScale(1);
+  new ResizeObserver(measure).observe($('#nav'));
+  window.addEventListener('resize', measure);
   window.addEventListener('hashchange', route);
   await route();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});

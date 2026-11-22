@@ -1,8 +1,8 @@
 // Capa de datos 100% local sobre IndexedDB
 const NAME = 'GestionHogarDB';
-const VERSION = 1;
+const VERSION = 2;
 export const STORES = ['transactions', 'goals', 'obligations', 'obligationPayments',
-  'products', 'stores', 'lists', 'listItems', 'priceHistory', 'tasks'];
+  'products', 'stores', 'lists', 'listItems', 'priceHistory', 'tasks', 'templates'];
 
 let db;
 
@@ -13,8 +13,8 @@ export function init() {
     req.onsuccess = () => { db = req.result; resolve(db); };
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      for (const s of STORES) d.createObjectStore(s, { keyPath: 'id', autoIncrement: true });
-      d.createObjectStore('settings', { keyPath: 'key' });
+      for (const s of STORES) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id', autoIncrement: true });
+      if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
     };
   });
 }
@@ -42,7 +42,8 @@ export async function where(store, pred) {
 
 // ---- Ajustes (clave/valor) ----
 const DEFAULTS = {
-  baseCurrency: 'CRC', exchangeRate: 515, foodBudget: 0, theme: 'auto', seeded: false
+  baseCurrency: 'CRC', exchangeRate: 515, foodBudget: 0, theme: 'auto', seeded: false,
+  uiScale: 100, contrast: false, easyMode: false, sizeAsked: false
 };
 let cache = { ...DEFAULTS };
 

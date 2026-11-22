@@ -1,6 +1,7 @@
 import * as DB from '../db.js';
-import { esc, money, monthKey, monthLabel, fmtDate, today, daysBetween, barRows } from '../utils.js';
+import { $$, esc, money, monthKey, monthLabel, fmtDate, today, daysBetween, barRows } from '../utils.js';
 import { summarize, EXPENSE_CATS } from './finance.js';
+import { setScale } from '../app.js';
 import { statuses } from './obligations.js';
 import { pendingTasks } from './tasks.js';
 
@@ -16,7 +17,15 @@ export async function render(el) {
   const top = Object.entries(s.byCat).sort((a, b) => b[1] - a[1]).slice(0, 5)
     .map(([c, v]) => ({ label: (EXPENSE_CATS.find(x => x[0] === c) || [0, c])[1], value: v }));
 
+  const hr = new Date().getHours();
+  const hello = hr < 12 ? 'Buenos días ☀️' : hr < 19 ? 'Buenas tardes 🌤️' : 'Buenas noches 🌙';
+  const pend = alerts.length + dueTasks.length;
+  const askSize = !DB.settings().sizeAsked;
   el.innerHTML = `
+    <div class="card hero"><h2>${hello}</h2><p>${pend ? `Hoy tienes <b>${pend}</b> ${pend === 1 ? 'cosa pendiente' : 'cosas pendientes'} en tu hogar.` : 'Tu hogar está al día. ¡Excelente!'}</p></div>
+    ${askSize ? `<div class="card easy-card"><h3>👓 ¿Cómo ves la letra?</h3><p class="muted">Elige el tamaño que prefieras. Puedes cambiarlo cuando quieras con los botones <b>A−</b> y <b>A+</b> de arriba.</p>
+      <div class="size-presets">${[['Normal', 100], ['Grande', 130], ['Muy grande', 160], ['Extra grande', 200]].map(([l, v]) => `<button class="btn" data-size="${v}">${l}</button>`).join('')}</div>
+      <button class="btn ghost sm" id="sizeOk">Así está bien</button></div>` : ''}
     <h2 class="cap">${esc(monthLabel(mk))}</h2>
     <div class="kpis">
       <div class="kpi income"><small>Ingresos</small><b>${money(s.income)}</b></div>
@@ -36,4 +45,9 @@ export async function render(el) {
     ${goals.length ? `<div class="card"><h3>🎯 Metas</h3>${goals.slice(0, 3).map(g => `<div class="row-between"><span>${esc(g.name)}</span><small>${Math.min(100, g.current / g.target * 100).toFixed(0)}%</small></div>
       <div class="bar"><i style="width:${Math.min(100, g.current / g.target * 100)}%"></i></div>`).join('')}</div>` : ''}
     ${!txs.length && !obs.length && !tasks.length ? '<div class="card"><h3>👋 Bienvenido</h3><p>Empieza registrando un gasto en <a href="#/finanzas">Finanzas</a>, tus pagos recurrentes en <a href="#/obligaciones">Pagos</a> o una lista en <a href="#/super">Súper</a>.</p></div>' : ''}`;
+  $$('[data-size]', el).forEach(b => {
+    b.onclick = async () => { await setScale(+b.dataset.size); await DB.setSetting('sizeAsked', true); render(el); };
+  });
+  const ok = el.querySelector('#sizeOk');
+  if (ok) ok.onclick = async () => { await DB.setSetting('sizeAsked', true); render(el); };
 }

@@ -1,5 +1,6 @@
 import * as DB from '../db.js';
 import { $, $$, esc, money, toBase, today, monthKey, monthLabel, shiftMonth, fmtDate, formModal, toast, barRows } from '../utils.js';
+import { doughnut, groupedBars } from '../charts.js';
 
 export const EXPENSE_CATS = [
   ['vivienda', 'Vivienda'], ['comida', 'Alimentación'], ['transporte', 'Transporte'],
@@ -107,15 +108,39 @@ export async function render(el) {
 
   el.innerHTML = `
     <div class="tabs"><button data-tab="mov" class="${tab === 'mov' ? 'on' : ''}">Movimientos</button>
+      <button data-tab="rep" class="${tab === 'rep' ? 'on' : ''}">Reportes</button>
       <button data-tab="metas" class="${tab === 'metas' ? 'on' : ''}">Metas</button></div>
-    ${tab === 'mov' ? `<div class="month-nav"><button class="btn ghost sm" id="prev">‹</button><b>${esc(monthLabel(month))}</b><button class="btn ghost sm" id="next">›</button></div>${movHtml}` : goalsHtml}
+    ${tab !== 'metas' ? `<div class="month-nav"><button class="btn ghost sm" id="prev">‹</button><b>${esc(monthLabel(month))}</b><button class="btn ghost sm" id="next">›</button></div>` : ''}
+    ${tab === 'mov' ? movHtml : tab === 'rep' ? `<div id="charts"></div>
+      <button class="btn primary block" id="pdf">📄 Descargar reporte en PDF</button>` : goalsHtml}
     ${tab === 'mov' ? '<button class="fab" id="addTx" aria-label="Nuevo movimiento">+</button>' : ''}`;
 
   const re = () => render(el);
   $$('[data-tab]', el).forEach(b => b.onclick = () => { tab = b.dataset.tab; re(); });
-  if (tab === 'mov') {
+  if (tab !== 'metas') {
     $('#prev', el).onclick = () => { month = shiftMonth(month, -1); re(); };
     $('#next', el).onclick = () => { month = shiftMonth(month, 1); re(); };
+  }
+  if (tab === 'rep') {
+    const base = DB.settings().baseCurrency;
+    const f = v => money(v, base);
+    const cats = Object.entries(s.byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => ({ label: catName('expense', c), value: v }));
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const k = shiftMonth(month, -i), m = summarize(allTx.filter(t => t.date.startsWith(k)));
+      months.push({ label: monthLabel(k).slice(0, 3), a: m.income, b: m.expense });
+    }
+    const box = $('#charts', el);
+    for (const c of [doughnut(cats, { title: 'Gastos por categoría', fmt: f }), groupedBars(months, { title: 'Ingresos vs gastos (6 meses)', fmt: f })]) {
+      c.className = 'chart'; box.appendChild(c);
+    }
+    $('#pdf', el).onclick = async e => {
+      e.target.disabled = true; e.target.textContent = 'Generando…';
+      try { await (await import('../pdf.js')).financeReport(month); toast('PDF generado'); }
+      catch (err) { toast(err.message); }
+      e.target.disabled = false; e.target.textContent = '📄 Descargar reporte en PDF';
+    };
+  } else if (tab === 'mov') {
     $('#addTx', el).onclick = async () => { await editTx(); re(); };
     $('#csv', el).onclick = () => exportCSV(txs);
     $$('li[data-id]', el).forEach(li => li.onclick = async () => { await editTx(txs.find(t => t.id === +li.dataset.id)); re(); });
