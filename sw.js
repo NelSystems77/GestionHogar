@@ -1,4 +1,4 @@
-const CACHE = 'gestionhogar-v3';
+const CACHE = 'gestionhogar-v4';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/styles.css',
   './js/app.js', './js/db.js', './js/utils.js', './js/charts.js', './js/pdf.js', './js/vendor/jspdf.umd.min.js',

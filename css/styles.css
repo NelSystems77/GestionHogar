@@ -200,3 +200,6 @@ img,canvas{max-width:100%}
 :root[data-big] .shop-row .qty{min-width:0;max-width:100%;flex:1 1 100%}
 :root[data-big] .qty span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(min-width:700px){.finish-bar{background:none;pointer-events:none}.finish-bar .btn{pointer-events:auto;max-width:36rem;margin:0 auto}}
+
+.list-card{flex-wrap:nowrap}.list-card>div{flex:1}.list-card .btn{flex:none}
+.tpl .row{gap:.4rem}
