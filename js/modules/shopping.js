@@ -84,20 +84,21 @@ async function createView(el) {
   const [stores, mine, products, lists] = await Promise.all([DB.all('stores'), DB.all('templates'), DB.all('products'), DB.all('lists')]);
   const lastDone = lists.filter(l => l.completed).sort((a, b) => b.id - a.id)[0];
   const d = creating;
+  const isTpl = d.mode === 'tpl';
   const tpls = [...BUILTIN_TEMPLATES.map(t => [t.id, `${t.emoji} ${t.name}`]), ...mine.map(t => [`m-${t.id}`, `⭐ ${t.name}`]), ...(lastDone ? [['last', `🔁 Repetir «${lastDone.name}»`]] : [])];
   const inDraft = n => d.items.some(i => norm(i.name) === norm(n));
 
   el.innerHTML = `
     <div class="row-between"><button class="btn ghost sm" data-act="cancel">‹ Cancelar</button></div>
-    <h2>Nueva lista de compras</h2>
+    <h2>${isTpl ? (d.tplId ? 'Editar plantilla' : 'Nueva plantilla') : 'Nueva lista de compras'}</h2>
     <div class="card">
-      <label class="field"><span>Nombre de la lista</span><input id="cn" placeholder="Ej: Compra de la semana" value="${esc(d.name)}"></label>
-      <div class="field"><span>Supermercado</span><div class="chips" id="cstores"></div></div>
-      <label class="field"><span>Presupuesto (opcional)</span><input id="cb" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(d.budget)}"></label>
+      <label class="field"><span>${isTpl ? 'Nombre de la plantilla' : 'Nombre de la lista'}</span><input id="cn" placeholder="Ej: Compra de la semana" value="${esc(d.name)}"></label>
+      ${isTpl ? '' : `<div class="field"><span>Supermercado</span><div class="chips" id="cstores"></div></div>
+      <label class="field"><span>Presupuesto (opcional)</span><input id="cb" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(d.budget)}"></label>`}
     </div>
-    <div class="card"><h3>1. Listas pre-cargadas</h3><p class="muted">Toca una para sumar sus artículos. Puedes combinar varias.</p>
-      <div class="chips">${tpls.map(([id, l]) => `<button class="chip" data-tpl="${esc(id)}">${esc(l)}</button>`).join('')}</div></div>
-    <div class="card"><h3>2. Agregar productos</h3>
+    ${isTpl ? '' : `<div class="card"><h3>1. Listas pre-cargadas</h3><p class="muted">Toca una para sumar sus artículos. Puedes combinar varias.</p>
+      <div class="chips">${tpls.map(([id, l]) => `<button class="chip" data-tpl="${esc(id)}">${esc(l)}</button>`).join('')}</div></div>`}
+    <div class="card"><h3>${isTpl ? 'Productos de la plantilla' : '2. Agregar productos'}</h3>
       <div class="search"><span aria-hidden="true">🔍</span><input id="cq" type="search" placeholder="Buscar o crear producto…" autocomplete="off"></div>
       <div id="cres"></div>
       <h4 style="margin-top:.8rem">O elige del catálogo</h4><div id="ccat"></div></div>
@@ -106,6 +107,7 @@ async function createView(el) {
   const $c = id => el.querySelector('#' + id);
 
   function paintStores() {
+    if (!$c('cstores')) return;
     $c('cstores').innerHTML = [[null, 'Sin definir'], ...stores.map(x => [x.id, x.name])]
       .map(([id, n]) => `<button class="chip ${d.storeId === id ? 'sel' : ''}" data-store="${id ?? ''}">${esc(n)}</button>`).join('');
   }
@@ -137,13 +139,13 @@ async function createView(el) {
       <div class="qty"><button data-act="ddec" aria-label="Menos">−</button><span>${+i.qty.toFixed(2)} ${esc(i.unit)}</span><button data-act="dinc" aria-label="Más">+</button></div>
       <button class="rm" data-act="drm" aria-label="Quitar">✕</button></li>`).join('')
       || '<li class="empty">Aún no hay artículos.<br>Elige una lista pre-cargada o agrega productos arriba.</li>';
-    $c('cgo').textContent = `✓ Crear lista${d.items.length ? ` (${d.items.length})` : ''}`;
+    $c('cgo').textContent = `✓ ${isTpl ? 'Guardar plantilla' : 'Crear lista'}${d.items.length ? ` (${d.items.length})` : ''}`;
   }
   const paint = () => { paintStores(); paintResults(); paintCatalog(); paintItems(); };
   const stepOf = i => (i.unit === 'kg' || i.unit === 'L') ? 0.5 : 1;
 
   $c('cn').oninput = e => { d.name = e.target.value; };
-  $c('cb').oninput = e => { d.budget = e.target.value; };
+  if ($c('cb')) $c('cb').oninput = e => { d.budget = e.target.value; };
   const q = $c('cq');
   q.oninput = paintResults;
   q.onkeydown = e => {
@@ -177,12 +179,77 @@ async function createView(el) {
     if (act === 'create') {
       const known = new Set(products.map(p => norm(p.name)));
       for (const i of d.items) if (!known.has(norm(i.name))) await DB.add('products', { name: i.name, category: i.category, favorite: false });
+      if (isTpl) {
+        if (!d.name.trim()) return toast('Escribe un nombre para la plantilla');
+        if (!d.items.length) return toast('Agrega al menos un producto');
+        const rec = { name: d.name.trim(), items: d.items.map(i => [i.name, i.qty, i.unit]) };
+        if (d.tplId) rec.id = d.tplId;
+        await DB.put('templates', rec);
+        creating = null; tab = 'plantillas'; toast('Plantilla guardada'); return render(el);
+      }
       const id = await DB.add('lists', { name: d.name.trim() || `Compra del ${fmtDate(today())}`, storeId: d.storeId, budget: Number(d.budget) || 0, date: today(), completed: false });
       await fillItems(id, d.items);
       creating = null; openList = id; query = ''; toast('Lista creada'); return render(el);
     }
   };
   paint();
+}
+
+// ---------- gestión de listas (se usa desde la lista abierta y desde la pantalla de listas) ----------
+async function duplicateList(listId) {
+  const list = await DB.get('lists', listId);
+  const items = await DB.where('listItems', i => i.listId === listId);
+  const id = await DB.add('lists', { name: `Copia de ${list.name}`, storeId: list.storeId, budget: list.budget || 0, date: today(), completed: false });
+  for (const i of items) await DB.add('listItems', { listId: id, name: i.name, category: i.category, qty: i.qty, unit: i.unit, price: i.price, checked: false });
+  return id;
+}
+
+async function deleteList(listId) {
+  const list = await DB.get('lists', listId);
+  if (!confirm(`¿Eliminar la lista «${list.name}»?`)) return false;
+  for (const i of await DB.where('listItems', i => i.listId === listId)) await DB.del('listItems', i.id);
+  if (list.txId && await DB.get('transactions', list.txId) && confirm('Esta compra se registró como gasto en Finanzas.\n¿Eliminar también ese gasto?')) await DB.del('transactions', list.txId);
+  await DB.del('lists', listId);
+  return true;
+}
+
+// Muestra el menú de acciones. Devuelve { action, id } o null. Acciones no conocidas (extra) se devuelven tal cual.
+async function manageList(listId, extra = []) {
+  const list = await DB.get('lists', listId);
+  const r = await formModal({ title: list.name, submitLabel: 'Aplicar', fields: [
+    { name: 'action', label: 'Acción', type: 'select', value: 'dup', options: [
+      ['dup', '📄 Duplicar lista'], ['rename', '✎ Renombrar / presupuesto / tienda'], ['tpl', '⭐ Guardar como plantilla'], ...extra, ['delete', '🗑 Eliminar lista']] }] });
+  if (!r) return null;
+  if (r.action === 'dup') { const id = await duplicateList(listId); toast('Lista duplicada'); return { action: 'dup', id }; }
+  if (r.action === 'rename') {
+    const stores = await DB.all('stores');
+    const t = await formModal({ title: 'Editar lista', fields: [
+      { name: 'name', label: 'Nombre', required: true, value: list.name },
+      { name: 'storeId', label: 'Supermercado', type: 'select', value: list.storeId ?? '', options: [['', 'Sin definir'], ...stores.map(x => [x.id, x.name])] },
+      { name: 'budget', label: 'Presupuesto', type: 'number', min: 0, step: '0.01', value: list.budget || '' }] });
+    if (!t) return null;
+    await DB.put('lists', { ...list, name: t.name, storeId: t.storeId ? +t.storeId : null, budget: t.budget || 0 });
+    toast('Lista actualizada'); return { action: 'rename' };
+  }
+  if (r.action === 'tpl') {
+    const t = await formModal({ title: 'Guardar plantilla', fields: [{ name: 'name', label: 'Nombre de la plantilla', required: true, value: list.name }] });
+    if (!t) return null;
+    const items = await DB.where('listItems', i => i.listId === listId);
+    await DB.add('templates', { name: t.name, items: items.map(i => [i.name, i.qty, i.unit]) });
+    toast('Plantilla guardada'); return { action: 'tpl' };
+  }
+  if (r.action === 'delete') return (await deleteList(listId)) ? { action: 'delete' } : null;
+  return { action: r.action };
+}
+
+// ---------- editor de plantillas (reutiliza la pantalla de creación) ----------
+async function startTemplateEdit(el, t) {
+  const products = await DB.all('products');
+  creating = { mode: 'tpl', tplId: t?.id ?? null, name: t?.name || '', storeId: null, budget: '', items: [] };
+  for (const [name, qty, unit] of t?.items || []) {
+    addDraft(name, { qty, unit, category: products.find(x => norm(x.name) === norm(name))?.category }, 'keep');
+  }
+  render(el);
 }
 
 async function fillItems(listId, rows) {
@@ -320,22 +387,12 @@ async function listView(el, listId) {
     paint();
   }
   async function listMenu() {
-    const r = await formModal({ title: 'Opciones de la lista', submitLabel: 'Aplicar', fields: [
-      { name: 'action', label: 'Acción', type: 'select', value: 'tpl', options: [
-        ['tpl', '⭐ Guardar como plantilla'], ['rename', '✎ Renombrar / presupuesto'], ['reset', '↩ Desmarcar todo'], ['delete', '🗑 Eliminar lista']] }] });
+    const r = await manageList(listId, ro ? [] : [['reset', '↩ Desmarcar todo']]);
     if (!r) return;
-    if (r.action === 'tpl') {
-      const t = await formModal({ title: 'Guardar plantilla', fields: [{ name: 'name', label: 'Nombre de la plantilla', required: true, value: list.name }] });
-      if (t) { await DB.add('templates', { name: t.name, items: items.map(i => [i.name, i.qty, i.unit]) }); toast('Plantilla guardada'); }
-    } else if (r.action === 'rename') {
-      const t = await formModal({ title: 'Editar lista', fields: [{ name: 'name', label: 'Nombre', required: true, value: list.name }, { name: 'budget', label: 'Presupuesto', type: 'number', min: 0, step: '0.01', value: list.budget || '' }] });
-      if (t) { list.name = t.name; list.budget = t.budget || 0; await DB.put('lists', list); return listView(el, listId); }
-    } else if (r.action === 'reset') {
-      for (const i of items) { i.checked = false; await DB.put('listItems', i); } paint();
-    } else if (r.action === 'delete' && confirm('¿Eliminar esta lista?')) {
-      for (const i of items) await DB.del('listItems', i.id);
-      await DB.del('lists', listId); openList = null; render(el);
-    }
+    if (r.action === 'delete') { openList = null; return render(el); }
+    if (r.action === 'dup') { openList = r.id; query = ''; return listView(el, r.id); }
+    if (r.action === 'rename') return listView(el, listId);
+    if (r.action === 'reset') { for (const i of items) { i.checked = false; await DB.put('listItems', i); } paint(); }
   }
 
   async function finish() {
@@ -392,21 +449,37 @@ export async function render(el) {
         return `<li class="item list-card" data-open="${l.id}"><div style="flex:1"><b>${esc(l.name)}</b>
         <small>${fmtDate(l.date)} · ${esc(stores.find(s => s.id === l.storeId)?.name || 'Sin súper')}</small>
         ${l.completed ? '' : `<div class="bar"><i style="width:${its.length ? got / its.length * 100 : 0}%"></i></div>`}</div>
-        <span class="badge ${l.completed ? 'paid' : 'ok'}">${l.completed ? money(l.total) : `${got}/${its.length}`}</span></li>`; }).join('')
+        <span class="badge ${l.completed ? 'paid' : 'ok'}">${l.completed ? money(l.total) : `${got}/${its.length}`}</span>
+        <button class="btn ghost sm" data-menu="${l.id}" aria-label="Opciones de ${esc(l.name)}">⋯</button></li>`; }).join('')
         || '<li class="empty">Crea tu primera lista o elige una plantilla.</li>'}</ul>`;
     wireTabs();
     $('#newList', el).onclick = () => startCreate(el);
     $$('[data-quick]', el).forEach(b => b.onclick = () => startCreate(el, b.dataset.quick));
     $$('[data-open]', el).forEach(li => li.onclick = () => { openList = +li.dataset.open; query = ''; re(); });
+    $$('[data-menu]', el).forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const r = await manageList(+b.dataset.menu);
+      if (r && r.action === 'dup') { openList = r.id; query = ''; }
+      if (r) re();
+    });
   } else if (tab === 'plantillas') {
     const mine = await DB.all('templates');
     const card = (t, mineFlag) => `<div class="card tpl"><div class="row-between"><b>${t.emoji || '⭐'} ${esc(t.name)}</b><small>${t.items.length} artículos</small></div>
       <small class="muted">${esc(t.items.slice(0, 6).map(i => i[0]).join(', '))}…</small>
-      <div class="row-between"><button class="btn primary sm" data-use="${mineFlag ? 'm-' : ''}${t.id}">Usar plantilla</button>${mineFlag ? `<button class="btn ghost sm" data-deltpl="${t.id}">Eliminar</button>` : ''}</div></div>`;
-    el.innerHTML = `${tabs}<h3>Listas pre-cargadas</h3>${BUILTIN_TEMPLATES.map(t => card(t, false)).join('')}
-      <h3>Mis plantillas</h3>${mine.map(t => card(t, true)).join('') || '<p class="empty">Desde cualquier lista usa «⋯ → Guardar como plantilla».</p>'}`;
+      <div class="row">
+        <button class="btn primary sm" data-use="${mineFlag ? 'm-' : ''}${t.id}">Usar</button>
+        ${mineFlag ? `<button class="btn ghost sm" data-edtpl="${t.id}">✎ Editar</button><button class="btn ghost sm" data-deltpl="${t.id}">Eliminar</button>`
+          : `<button class="btn ghost sm" data-cptpl="${t.id}">📄 Copiar y editar</button>`}</div></div>`;
+    el.innerHTML = `${tabs}<button class="btn primary block" id="newTpl">＋ Nueva plantilla</button><h3>Listas pre-cargadas</h3>${BUILTIN_TEMPLATES.map(t => card(t, false)).join('')}
+      <h3>Mis plantillas</h3>${mine.map(t => card(t, true)).join('') || '<p class="empty">Crea una con «＋ Nueva plantilla» o desde cualquier lista con «⋯ → Guardar como plantilla».</p>'}`;
     wireTabs();
     $$('[data-use]', el).forEach(b => b.onclick = () => startCreate(el, b.dataset.use));
+    $('#newTpl', el).onclick = () => startTemplateEdit(el, null);
+    $$('[data-edtpl]', el).forEach(b => b.onclick = () => startTemplateEdit(el, mine.find(t => t.id === +b.dataset.edtpl)));
+    $$('[data-cptpl]', el).forEach(b => b.onclick = () => {
+      const t = BUILTIN_TEMPLATES.find(x => x.id === b.dataset.cptpl);
+      startTemplateEdit(el, { name: `${t.name} (mía)`, items: t.items }); // sin id: se guarda como plantilla nueva
+    });
     $$('[data-deltpl]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar plantilla?')) { await DB.del('templates', +b.dataset.deltpl); re(); } });
   } else if (tab === 'catalogo') {
     const products = (await DB.all('products')).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
