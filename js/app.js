@@ -1,6 +1,7 @@
 import * as DB from './db.js';
 import { $, $$ } from './utils.js';
 import { seedIfNeeded } from './modules/shopping.js';
+import { enabled as interestOn, state as interestState } from './interest.js';
 
 const ROUTES = {
   '': ['Inicio', () => import('./modules/dashboard.js')],
@@ -85,6 +86,12 @@ async function start() {
     return;
   }
   applyTheme();
+  // Ícono 💬 de la barra superior: visible mientras la encuesta esté activa y el usuario no haya respondido
+  const pro = $('#proBtn');
+  const refreshPro = () => { pro.hidden = !interestOn() || !!interestState(); requestAnimationFrame(measure); };
+  pro.onclick = async () => { if (await (await import('./modules/interest-ui.js')).askInterest()) refreshPro(); };
+  window.addEventListener('interest-changed', refreshPro);
+  refreshPro();
   $('#smaller').onclick = () => stepScale(-1);
   $('#bigger').onclick = () => stepScale(1);
   new ResizeObserver(measure).observe($('#nav'));

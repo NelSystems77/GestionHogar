@@ -15,5 +15,6 @@ export async function askInterest() {
   if (!r) return false;
   const sent = await submit(r.answer, r.answer === 'no' ? 'na' : r.price);
   toast(sent ? '¡Gracias! Registramos tu respuesta' : 'Gracias. Se enviará cuando haya conexión');
+  window.dispatchEvent(new Event('interest-changed'));
   return true;
 }

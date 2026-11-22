@@ -1,6 +1,6 @@
 # Encuesta de interés con Firebase
 
-La app incluye una encuesta voluntaria y anónima («¿Te gustaría una versión Pro?»). Las respuestas se guardan en
+La app incluye una encuesta voluntaria y anónima («¿Te gustaría una versión Pro?»). Se muestra con un ícono 💬 en la barra superior (hasta que el usuario responda), una tarjeta en el inicio a partir del 3.er día de uso y otra en Ajustes. Las respuestas se guardan en
 Firestore, una por dispositivo. No se envía ningún dato de la app (montos, listas, productos…).
 
 ## Configuración (una sola vez)

@@ -42,11 +42,11 @@ export async function retryPending() {
   try { rec.sent = await send(rec); if (rec.sent) await DB.setSetting('interest', rec); } catch (e) { /* sin conexión */ }
 }
 
-// ¿Mostrar la tarjeta en el inicio? Tras 7 días de uso, si no respondió ni la pospuso
+// ¿Mostrar la tarjeta en el inicio? Tras 3 días de uso, si no respondió ni la pospuso
 export function shouldPrompt() {
   const s = DB.settings();
   if (!enabled() || s.interest) return false;
   if (Date.now() < (s.interestSnooze || 0)) return false;
-  return Date.now() - (s.firstSeen || Date.now()) >= 7 * 864e5;
+  return Date.now() - (s.firstSeen || Date.now()) >= 3 * 864e5;
 }
 export const snooze = () => DB.setSetting('interestSnooze', Date.now() + 14 * 864e5);
