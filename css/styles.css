@@ -206,3 +206,7 @@ img,canvas{max-width:100%}
 
 [hidden]{display:none!important}
 .size-ctl #proBtn{background:rgba(255,255,255,.3)}
+
+.size-ctl #proBtn{padding:0 .8em;font-size:1em;white-space:nowrap}
+:root[data-big] .size-ctl #proBtn .lbl{display:none}
+@media(max-width:340px){.size-ctl #proBtn .lbl{display:none}}
