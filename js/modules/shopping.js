@@ -11,7 +11,7 @@ const SEED = {
   'Limpieza': ['Detergente', 'Jabón de platos', 'Cloro', 'Papel higiénico', 'Servilletas', 'Bolsas de basura', 'Desinfectante'],
   'Higiene personal': ['Jabón', 'Shampoo', 'Pasta dental', 'Desodorante', 'Cepillo de dientes']
 };
-const SEED_STORES = ['AutoMercado', 'Walmart', 'Más x Menos', 'Fresh Market', 'Pali'];
+const SEED_STORES = ['AutoMercado', 'Walmart', 'Más x Menos', 'Fresh Market', 'Pali', 'Maxi Pali', 'Chino'];
 const EMOJI = { 'Frutas y verduras': '🥬', 'Lácteos y huevos': '🥛', 'Carnes': '🍗', 'Granos y despensa': '🍚', 'Bebidas': '🧃', 'Limpieza': '🧽', 'Higiene personal': '🧴', 'Otros': '🛍️' };
 const UNITS = ['u', 'kg', 'g', 'L', 'paq', 'bolsa', 'caja'];
 
@@ -29,10 +29,17 @@ export const BUILTIN_TEMPLATES = [
 ];
 
 export async function seedIfNeeded() {
-  if (DB.settings().seeded) return;
-  for (const [category, names] of Object.entries(SEED)) for (const name of names) await DB.add('products', { name, category, favorite: false });
-  for (const name of SEED_STORES) await DB.add('stores', { name });
-  await DB.setSetting('seeded', true);
+  const st = DB.settings();
+  if (!st.seeded) {
+    for (const [category, names] of Object.entries(SEED)) for (const name of names) await DB.add('products', { name, category, favorite: false });
+    for (const name of SEED_STORES) await DB.add('stores', { name });
+    await DB.setSetting('seeded', true);
+    await DB.setSetting('storesV2', true);
+  } else if (!st.storesV2) { // instalaciones anteriores: agregar las tiendas nuevas una sola vez
+    const have = (await DB.all('stores')).map(x => norm(x.name));
+    for (const name of ['Maxi Pali', 'Chino']) if (!have.includes(norm(name))) await DB.add('stores', { name });
+    await DB.setSetting('storesV2', true);
+  }
 }
 
 const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -43,33 +50,140 @@ let tab = 'listas';
 let openList = null;
 let query = '';
 
-// ---------- creación de listas ----------
-async function newList() {
-  const [stores, mine, lists] = await Promise.all([DB.all('stores'), DB.all('templates'), DB.all('lists')]);
-  const lastDone = lists.filter(l => l.completed).sort((a, b) => b.id - a.id)[0];
-  const tplOptions = [['empty', 'Lista vacía'],
-    ...BUILTIN_TEMPLATES.map(t => [t.id, `${t.emoji} ${t.name} (${t.items.length})`]),
-    ...mine.map(t => [`m-${t.id}`, `⭐ ${t.name} (${t.items.length})`]),
-    ...(lastDone ? [['last', `🔁 Repetir «${lastDone.name}»`]] : [])];
-  const r = await formModal({
-    title: 'Nueva lista de compras', submitLabel: 'Crear lista',
-    fields: [
-      { name: 'tpl', label: 'Empezar con', type: 'select', value: openTpl || 'empty', options: tplOptions },
-      { name: 'name', label: 'Nombre', required: true, value: '' },
-      { name: 'storeId', label: 'Supermercado', type: 'select', value: stores[0]?.id, options: [['', 'Sin definir'], ...stores.map(s => [s.id, s.name])] },
-      { name: 'budget', label: 'Presupuesto (opcional)', type: 'number', min: 0, step: '0.01' }]
-  });
-  openTpl = null;
-  if (!r) return null;
-  const id = await DB.add('lists', { name: r.name, storeId: r.storeId ? +r.storeId : null, budget: r.budget || 0, date: today(), completed: false });
-  let rows = [];
-  if (r.tpl.startsWith('b-')) rows = BUILTIN_TEMPLATES.find(t => t.id === r.tpl).items.map(([name, qty]) => ({ name, qty }));
-  else if (r.tpl.startsWith('m-')) rows = mine.find(t => t.id === +r.tpl.slice(2)).items.map(([name, qty, unit]) => ({ name, qty, unit }));
-  else if (r.tpl === 'last') rows = (await DB.where('listItems', i => i.listId === lastDone.id)).map(i => ({ name: i.name, qty: i.qty, unit: i.unit }));
-  await fillItems(id, rows);
-  return id;
+// ---------- creación de listas (pantalla completa) ----------
+const CATS = [...Object.keys(SEED), 'Otros'];
+let creating = null; // borrador: { name, storeId, budget, items: [{name, qty, unit, category}] }
+
+async function startCreate(el, tplId) {
+  const stores = await DB.all('stores');
+  creating = { name: '', storeId: stores[0]?.id ?? null, budget: '', items: [] };
+  if (tplId) await applyTemplate(tplId);
+  render(el);
 }
-let openTpl = null;
+
+function addDraft(name, { qty = 1, unit = 'u', category = 'Otros' } = {}, mode = 'inc') {
+  const hit = creating.items.find(i => norm(i.name) === norm(name));
+  if (hit) { if (mode === 'inc') hit.qty += 1; return; }
+  creating.items.push({ name, qty, unit, category });
+}
+
+async function applyTemplate(id) {
+  const [mine, lists, products] = await Promise.all([DB.all('templates'), DB.all('lists'), DB.all('products')]);
+  const lastDone = lists.filter(l => l.completed).sort((a, b) => b.id - a.id)[0];
+  let name = '', rows = [];
+  if (id.startsWith('b-')) { const t = BUILTIN_TEMPLATES.find(x => x.id === id); name = t.name; rows = t.items.map(([n, q]) => ({ name: n, qty: q })); }
+  else if (id.startsWith('m-')) { const t = mine.find(x => x.id === +id.slice(2)); name = t.name; rows = t.items.map(([n, q, u]) => ({ name: n, qty: q, unit: u })); }
+  else if (id === 'last' && lastDone) {
+    name = lastDone.name; rows = (await DB.where('listItems', i => i.listId === lastDone.id)).map(i => ({ name: i.name, qty: i.qty, unit: i.unit }));
+  }
+  for (const r of rows) addDraft(r.name, { qty: r.qty, unit: r.unit, category: products.find(x => norm(x.name) === norm(r.name))?.category }, 'keep');
+  if (!creating.name) creating.name = name;
+}
+
+async function createView(el) {
+  const [stores, mine, products, lists] = await Promise.all([DB.all('stores'), DB.all('templates'), DB.all('products'), DB.all('lists')]);
+  const lastDone = lists.filter(l => l.completed).sort((a, b) => b.id - a.id)[0];
+  const d = creating;
+  const tpls = [...BUILTIN_TEMPLATES.map(t => [t.id, `${t.emoji} ${t.name}`]), ...mine.map(t => [`m-${t.id}`, `⭐ ${t.name}`]), ...(lastDone ? [['last', `🔁 Repetir «${lastDone.name}»`]] : [])];
+  const inDraft = n => d.items.some(i => norm(i.name) === norm(n));
+
+  el.innerHTML = `
+    <div class="row-between"><button class="btn ghost sm" data-act="cancel">‹ Cancelar</button></div>
+    <h2>Nueva lista de compras</h2>
+    <div class="card">
+      <label class="field"><span>Nombre de la lista</span><input id="cn" placeholder="Ej: Compra de la semana" value="${esc(d.name)}"></label>
+      <div class="field"><span>Supermercado</span><div class="chips" id="cstores"></div></div>
+      <label class="field"><span>Presupuesto (opcional)</span><input id="cb" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(d.budget)}"></label>
+    </div>
+    <div class="card"><h3>1. Listas pre-cargadas</h3><p class="muted">Toca una para sumar sus artículos. Puedes combinar varias.</p>
+      <div class="chips">${tpls.map(([id, l]) => `<button class="chip" data-tpl="${esc(id)}">${esc(l)}</button>`).join('')}</div></div>
+    <div class="card"><h3>2. Agregar productos</h3>
+      <div class="search"><span aria-hidden="true">🔍</span><input id="cq" type="search" placeholder="Buscar o crear producto…" autocomplete="off"></div>
+      <div id="cres"></div>
+      <h4 style="margin-top:.8rem">O elige del catálogo</h4><div id="ccat"></div></div>
+    <div class="card"><h3 id="ch"></h3><ul class="shop-list" id="citems"></ul></div>
+    <div class="finish-bar"><button class="btn primary block big" data-act="create" id="cgo"></button></div>`;
+  const $c = id => el.querySelector('#' + id);
+
+  function paintStores() {
+    $c('cstores').innerHTML = [[null, 'Sin definir'], ...stores.map(x => [x.id, x.name])]
+      .map(([id, n]) => `<button class="chip ${d.storeId === id ? 'sel' : ''}" data-store="${id ?? ''}">${esc(n)}</button>`).join('');
+  }
+  function paintResults() {
+    const q = norm($c('cq').value.trim());
+    if (!q) { $c('cres').innerHTML = ''; return; }
+    const hits = products.filter(p => norm(p.name).includes(q)).slice(0, 10);
+    const exact = products.some(p => norm(p.name) === q) || inDraft($c('cq').value.trim());
+    $c('cres').innerHTML = `<div class="results card">${hits.map(p => `<div class="res" data-pname="${esc(p.name)}"><span class="emoji">${EMOJI[p.category] || '🛍️'}</span>
+      <div class="info"><b>${esc(p.name)}</b><small>${inDraft(p.name) ? '✓ ya está en tu lista (toca para sumar 1)' : esc(p.category)}</small></div>
+      <button class="btn ${inDraft(p.name) ? 'ghost' : 'primary'} sm" data-act="dadd">${inDraft(p.name) ? '＋1' : '+ Agregar'}</button></div>`).join('')}
+      ${!exact ? `<div class="res" data-pname="${esc($c('cq').value.trim())}"><span class="emoji">➕</span><div class="info"><b>Crear «${esc($c('cq').value.trim())}»</b>
+        <select class="catsel" data-newcat aria-label="Categoría">${CATS.map(c => `<option ${c === 'Otros' ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+        <button class="btn primary sm" data-act="dnew">+ Crear</button></div>` : ''}</div>`;
+  }
+  function paintCatalog() {
+    const groups = products.reduce((g, p) => ((g[p.category] ||= []).push(p), g), {});
+    const open = new Set([...el.querySelectorAll('#ccat details[open]')].map(x => x.dataset.cat));
+    $c('ccat').innerHTML = Object.entries(groups).map(([c, ps]) => {
+      const n = ps.filter(p => inDraft(p.name)).length;
+      return `<details data-cat="${esc(c)}" ${open.has(c) ? 'open' : ''}><summary>${EMOJI[c] || '🛍️'} ${esc(c)} <span class="badge ${n ? 'paid' : ''}">${n}/${ps.length}</span></summary>
+        <div class="chips">${ps.map(p => `<button class="chip ${inDraft(p.name) ? 'sel' : ''}" data-cat-add="${esc(p.name)}">${inDraft(p.name) ? '✓ ' : ''}${esc(p.name)}</button>`).join('')}</div></details>`;
+    }).join('');
+  }
+  function paintItems() {
+    $c('ch').textContent = `Tu lista (${d.items.length} ${d.items.length === 1 ? 'artículo' : 'artículos'})`;
+    $c('citems').innerHTML = d.items.map((i, k) => `<li class="shop-row" data-k="${k}"><span class="emoji">${EMOJI[i.category] || '🛍️'}</span>
+      <div class="info"><b>${esc(i.name)}</b></div>
+      <div class="qty"><button data-act="ddec" aria-label="Menos">−</button><span>${+i.qty.toFixed(2)} ${esc(i.unit)}</span><button data-act="dinc" aria-label="Más">+</button></div>
+      <button class="rm" data-act="drm" aria-label="Quitar">✕</button></li>`).join('')
+      || '<li class="empty">Aún no hay artículos.<br>Elige una lista pre-cargada o agrega productos arriba.</li>';
+    $c('cgo').textContent = `✓ Crear lista${d.items.length ? ` (${d.items.length})` : ''}`;
+  }
+  const paint = () => { paintStores(); paintResults(); paintCatalog(); paintItems(); };
+  const stepOf = i => (i.unit === 'kg' || i.unit === 'L') ? 0.5 : 1;
+
+  $c('cn').oninput = e => { d.name = e.target.value; };
+  $c('cb').oninput = e => { d.budget = e.target.value; };
+  const q = $c('cq');
+  q.oninput = paintResults;
+  q.onkeydown = e => {
+    if (e.key !== 'Enter' || !q.value.trim()) return;
+    const hit = products.find(p => norm(p.name) === norm(q.value.trim()));
+    addDraft(hit ? hit.name : q.value.trim(), { category: hit?.category }); q.value = ''; paint();
+  };
+
+  el.onclick = async e => {
+    const t = e.target.closest('button'); if (!t) return;
+    const li = t.closest('[data-k]'), it = li && d.items[+li.dataset.k];
+    if (t.dataset.store !== undefined) { d.storeId = t.dataset.store === '' ? null : +t.dataset.store; return paintStores(); }
+    if (t.dataset.tpl) { await applyTemplate(t.dataset.tpl); $c('cn').value = d.name; toast('Artículos agregados'); return paint(); }
+    if (t.dataset.catAdd) {
+      const name = t.dataset.catAdd;
+      if (inDraft(name)) d.items = d.items.filter(i => norm(i.name) !== norm(name));
+      else addDraft(name, { category: products.find(p => p.name === name)?.category });
+      return paint();
+    }
+    const act = t.dataset.act;
+    if (act === 'cancel') { creating = null; return render(el); }
+    if (act === 'dadd') { const p = products.find(x => x.name === t.closest('[data-pname]').dataset.pname); addDraft(p.name, { category: p.category }); q.value = ''; return paint(); }
+    if (act === 'dnew') {
+      const row = t.closest('[data-pname]');
+      addDraft(row.dataset.pname, { category: row.querySelector('[data-newcat]').value });
+      toast(`Creado: ${row.dataset.pname}`); q.value = ''; q.focus(); return paint();
+    }
+    if (act === 'dinc' && it) { it.qty += stepOf(it); return paintItems(); }
+    if (act === 'ddec' && it) { it.qty = Math.max(stepOf(it), it.qty - stepOf(it)); return paintItems(); }
+    if (act === 'drm' && it) { d.items.splice(+li.dataset.k, 1); return paint(); }
+    if (act === 'create') {
+      const known = new Set(products.map(p => norm(p.name)));
+      for (const i of d.items) if (!known.has(norm(i.name))) await DB.add('products', { name: i.name, category: i.category, favorite: false });
+      const id = await DB.add('lists', { name: d.name.trim() || `Compra del ${fmtDate(today())}`, storeId: d.storeId, budget: Number(d.budget) || 0, date: today(), completed: false });
+      await fillItems(id, d.items);
+      creating = null; openList = id; query = ''; toast('Lista creada'); return render(el);
+    }
+  };
+  paint();
+}
 
 async function fillItems(listId, rows) {
   if (!rows.length) return;
@@ -130,7 +244,8 @@ async function listView(el, listId) {
         <button class="btn ${i.checked ? 'ghost' : 'primary'} sm" data-act="toggle">${i.checked ? '↩ Devolver' : '✓ Comprar'}</button></div>`).join('')}
       ${cat.map(p => `<div class="res" data-pname="${esc(p.name)}"><span class="emoji">${EMOJI[p.category] || '🛍️'}</span><div class="info"><b>${esc(p.name)}</b><small>No está en tu lista</small></div>
         <div class="row"><button class="btn ghost sm" data-act="addp">+ Agregar</button><button class="btn primary sm" data-act="addbuy">✓ Ya lo tomé</button></div></div>`).join('')}
-      ${!exact ? `<div class="res" data-pname="${esc(query.trim())}"><span class="emoji">➕</span><div class="info"><b>Crear «${esc(query.trim())}»</b><small>Producto nuevo</small></div>
+      ${!exact ? `<div class="res" data-pname="${esc(query.trim())}"><span class="emoji">➕</span><div class="info"><b>Crear «${esc(query.trim())}»</b>
+        <select class="catsel" data-newcat aria-label="Categoría">${CATS.map(c => `<option ${c === 'Otros' ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
         <div class="row"><button class="btn ghost sm" data-act="addp">+ Agregar</button><button class="btn primary sm" data-act="addbuy">✓ Ya lo tomé</button></div></div>` : ''}
     </div>`;
   }
@@ -162,9 +277,9 @@ async function listView(el, listId) {
     it.checked = v; it.checkedAt = v ? Date.now() : null;
     await DB.put('listItems', it); paint();
   }
-  async function addItem(name, checked) {
+  async function addItem(name, checked, category) {
     const p = products.find(x => norm(x.name) === norm(name));
-    if (!p) { const np = { name, category: 'Otros', favorite: false }; np.id = await DB.add('products', np); products.push(np); }
+    if (!p) { const np = { name, category: category || 'Otros', favorite: false }; np.id = await DB.add('products', np); products.push(np); }
     const prod = p || products[products.length - 1];
     const l = hist.filter(h => norm(h.name) === norm(name)).sort((a, b) => b.date.localeCompare(a.date));
     const last = l.find(h => h.storeId === list.storeId) || l[0];
@@ -189,7 +304,7 @@ async function listView(el, listId) {
       if (r) { it.price = r.price || 0; await DB.put('listItems', it); }
       return paint();
     }
-    if (act === 'addp' || act === 'addbuy') return addItem(btn.closest('[data-pname]').dataset.pname, act === 'addbuy');
+    if (act === 'addp' || act === 'addbuy') { const row = btn.closest('[data-pname]'); return addItem(row.dataset.pname, act === 'addbuy', row.querySelector('[data-newcat]')?.value); }
     if (act === 'pdf') { try { await (await import('../pdf.js')).shoppingReport(list, items, store?.name); } catch (err) { toast(err.message); } return; }
     if (act === 'menu') return listMenu();
     if (act === 'finish') return finish();
@@ -256,6 +371,7 @@ async function listView(el, listId) {
 // ---------- pantalla principal de Súper ----------
 export async function render(el) {
   el.onclick = null; el.ondblclick = null;
+  if (creating) return createView(el);
   if (openList) return listView(el, openList);
   const tabs = `<div class="tabs">${[['listas', 'Listas'], ['plantillas', 'Plantillas'], ['catalogo', 'Catálogo'], ['tiendas', 'Tiendas'], ['precios', 'Precios']]
     .map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
@@ -279,9 +395,8 @@ export async function render(el) {
         <span class="badge ${l.completed ? 'paid' : 'ok'}">${l.completed ? money(l.total) : `${got}/${its.length}`}</span></li>`; }).join('')
         || '<li class="empty">Crea tu primera lista o elige una plantilla.</li>'}</ul>`;
     wireTabs();
-    const start = async () => { const id = await newList(); if (id) { openList = id; query = ''; re(); } };
-    $('#newList', el).onclick = start;
-    $$('[data-quick]', el).forEach(b => b.onclick = () => { openTpl = b.dataset.quick; start(); });
+    $('#newList', el).onclick = () => startCreate(el);
+    $$('[data-quick]', el).forEach(b => b.onclick = () => startCreate(el, b.dataset.quick));
     $$('[data-open]', el).forEach(li => li.onclick = () => { openList = +li.dataset.open; query = ''; re(); });
   } else if (tab === 'plantillas') {
     const mine = await DB.all('templates');
@@ -291,7 +406,7 @@ export async function render(el) {
     el.innerHTML = `${tabs}<h3>Listas pre-cargadas</h3>${BUILTIN_TEMPLATES.map(t => card(t, false)).join('')}
       <h3>Mis plantillas</h3>${mine.map(t => card(t, true)).join('') || '<p class="empty">Desde cualquier lista usa «⋯ → Guardar como plantilla».</p>'}`;
     wireTabs();
-    $$('[data-use]', el).forEach(b => b.onclick = async () => { openTpl = b.dataset.use; const id = await newList(); if (id) { openList = id; re(); } });
+    $$('[data-use]', el).forEach(b => b.onclick = () => startCreate(el, b.dataset.use));
     $$('[data-deltpl]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar plantilla?')) { await DB.del('templates', +b.dataset.deltpl); re(); } });
   } else if (tab === 'catalogo') {
     const products = (await DB.all('products')).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
