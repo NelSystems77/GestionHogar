@@ -1,6 +1,6 @@
 # GestionHogar 🏠
 
-PWA para administrar el hogar en un solo lugar: finanzas, pagos recurrentes, supermercado y tareas. 100% local (IndexedDB), funciona offline y no requiere cuenta.
+PWA para administrar el hogar en un solo lugar: finanzas, pagos recurrentes, supermercado y tareas. tus datos se guardan solo en tu dispositivo (IndexedDB), funciona offline y no requiere cuenta.
 
 ## Módulos
 - **Inicio**: resumen del mes, pagos por vencer, tareas de hoy, presupuesto de súper y metas.
@@ -22,3 +22,6 @@ python3 -m http.server 8000
 ```
 
 Despliega en GitHub Pages, Vercel o Netlify tal cual. Al cambiar archivos, sube la versión de `CACHE` en `sw.js`.
+
+## Privacidad y encuesta de interés
+La app no usa analítica ni rastreo. La única información que puede salir del dispositivo es la respuesta **voluntaria y anónima** a la encuesta «¿Te gustaría una versión Pro?» (sí / tal vez / no y un rango de precio), una por dispositivo. Ver [docs/FIREBASE.md](docs/FIREBASE.md) y [firestore.rules](firestore.rules).

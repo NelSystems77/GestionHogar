@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Encuesta de interés: cualquiera puede CREAR una respuesta (una por dispositivo, el id del documento),
+    // con exactamente estos campos y valores. Nadie puede leer, editar ni borrar desde la app.
+    match /interest/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['answer', 'price', 'v'])
+                    && request.resource.data.answer in ['si', 'tal_vez', 'no']
+                    && request.resource.data.price in ['na', 'lt2', '2a5', 'gt5']
+                    && request.resource.data.v == 1
+                    && id.size() >= 16 && id.size() <= 64;
+      allow read, update, delete: if false;
+    }
+
+    // Todo lo demás, cerrado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

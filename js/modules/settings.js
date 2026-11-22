@@ -2,6 +2,8 @@ import * as DB from '../db.js';
 import { $, esc, toast, confirmBox } from '../utils.js';
 import { applyTheme, setScale, SCALES } from '../app.js';
 import { seedIfNeeded } from './shopping.js';
+import { enabled as interestOn, state as interestState, ANSWERS } from '../interest.js';
+import { askInterest } from './interest-ui.js';
 
 export async function render(el) {
   const s = DB.settings();
@@ -24,9 +26,15 @@ export async function render(el) {
       <label class="field"><span>Tema</span><select id="theme"><option value="auto">Automático</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></label></div>
     <div class="card"><h3>Respaldo de datos</h3><p class="muted">Tus datos viven solo en este dispositivo. Exporta un respaldo con regularidad.</p>
       <div class="row"><button class="btn primary" id="exp">⬇ Exportar</button><label class="btn ghost" for="imp">⬆ Importar</label><input type="file" id="imp" accept="application/json" hidden></div></div>
+    ${interestOn() ? `<div class="card"><h3>💬 Versión Pro</h3>${interestState()
+      ? `<p class="muted">¡Gracias! Tu respuesta: <b>${esc((ANSWERS.find(a => a[0] === interestState().answer) || [0, ''])[1])}</b>${interestState().sent ? '' : ' (pendiente de enviar)'}.</p>`
+      : `<p class="muted">¿Te interesaría sincronizar con tu familia y tener respaldo en la nube? Tu respuesta es voluntaria y anónima.</p><button class="btn primary" id="pro">Quiero opinar</button>`}
+      <p class="muted">Privacidad: la app guarda tus datos solo en este dispositivo. Únicamente se envía la respuesta de esta encuesta, si tú decides responder.</p></div>` : ''}
     <div class="card danger-zone"><h3>Zona de peligro</h3><p class="muted">Borra todos los datos de la app en este dispositivo.</p><button class="btn danger" id="reset">Borrar todo</button></div>
-    <p class="muted center">GestionHogar v1.0 · 100% local y privado</p>`;
+    <p class="muted center">Gestión Hogar · tus datos viven solo en este dispositivo</p>`;
   $('#theme', el).value = s.theme;
+  const pro = el.querySelector('#pro');
+  if (pro) pro.onclick = async () => { if (await askInterest()) render(el); };
   const scaleIn = $('#scale', el);
   scaleIn.oninput = () => {
     $('#pct', el).textContent = scaleIn.value + '%';
