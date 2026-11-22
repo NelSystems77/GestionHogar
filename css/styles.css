@@ -203,3 +203,6 @@ img,canvas{max-width:100%}
 
 .list-card{flex-wrap:nowrap}.list-card>div{flex:1}.list-card .btn{flex:none}
 .tpl .row{gap:.4rem}
+
+[hidden]{display:none!important}
+.size-ctl #proBtn{background:rgba(255,255,255,.3)}

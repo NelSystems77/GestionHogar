@@ -1,4 +1,4 @@
-const CACHE = 'gestionhogar-v9';
+const CACHE = 'gestionhogar-v10';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/styles.css',
   './js/app.js', './js/db.js', './js/utils.js', './js/charts.js', './js/interest.js', './js/firebase-config.js', './js/modules/interest-ui.js', './js/pdf.js', './js/vendor/jspdf.umd.min.js',
