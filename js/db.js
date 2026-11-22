@@ -43,7 +43,7 @@ export async function where(store, pred) {
 // ---- Ajustes (clave/valor) ----
 const DEFAULTS = {
   baseCurrency: 'CRC', exchangeRate: 515, foodBudget: 0, theme: 'auto', seeded: false,
-  uiScale: 100, contrast: false, easyMode: false, sizeAsked: false
+  uiScale: 100, contrast: false, easyMode: false, sizeAsked: false, firstSeen: null, interest: null, interestSnooze: 0, deviceId: null
 };
 let cache = { ...DEFAULTS };
 

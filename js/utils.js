@@ -47,7 +47,7 @@ export function toast(msg) {
 export function confirmBox(msg) { return window.confirm(msg); }
 
 // Diálogo modal con formulario. fields: [{name,label,type,value,options,required,step,placeholder}]
-export function formModal({ title, fields, submitLabel = 'Guardar', onDelete }) {
+export function formModal({ title, fields, submitLabel = 'Guardar', onDelete, intro }) {
   return new Promise(resolve => {
     const wrap = document.createElement('div');
     wrap.className = 'modal-backdrop';
@@ -69,7 +69,7 @@ export function formModal({ title, fields, submitLabel = 'Guardar', onDelete }) 
       return `<label class="field ${f.type === 'checkbox' ? 'inline' : ''}" for="${id}"><span>${esc(f.label)}</span>${ctl}</label>`;
     }).join('');
     wrap.innerHTML = `<form class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-      <h3>${esc(title)}</h3>${inputs}
+      <h3>${esc(title)}</h3>${intro ? `<p class="muted">${esc(intro)}</p>` : ''}${inputs}
       <div class="modal-actions">
         ${onDelete ? '<button type="button" class="btn danger" data-act="del">Eliminar</button>' : ''}
         <button type="button" class="btn ghost" data-act="cancel">Cancelar</button>

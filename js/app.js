@@ -79,6 +79,7 @@ async function start() {
     await DB.init();
     await DB.loadSettings();
     await seedIfNeeded();
+    if (!DB.settings().firstSeen) await DB.setSetting('firstSeen', Date.now());
   } catch (e) {
     $('#app').innerHTML = '<div class="card"><h3>Almacenamiento no disponible</h3><p class="muted">GestionHogar necesita IndexedDB. Sal del modo privado e inténtalo de nuevo.</p></div>';
     return;
@@ -91,6 +92,7 @@ async function start() {
   window.addEventListener('hashchange', route);
   await route();
   hideSplash();
+  import('./interest.js').then(m => m.retryPending()).catch(() => {});
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 start();

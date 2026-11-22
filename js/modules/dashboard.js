@@ -2,6 +2,8 @@ import * as DB from '../db.js';
 import { $$, esc, money, monthKey, monthLabel, fmtDate, today, daysBetween, barRows } from '../utils.js';
 import { summarize, EXPENSE_CATS } from './finance.js';
 import { setScale } from '../app.js';
+import { shouldPrompt, snooze } from '../interest.js';
+import { askInterest } from './interest-ui.js';
 import { statuses } from './obligations.js';
 import { pendingTasks } from './tasks.js';
 
@@ -26,6 +28,8 @@ export async function render(el) {
     ${askSize ? `<div class="card easy-card"><h3>👓 ¿Cómo ves la letra?</h3><p class="muted">Elige el tamaño que prefieras. Puedes cambiarlo cuando quieras con los botones <b>A−</b> y <b>A+</b> de arriba.</p>
       <div class="size-presets">${[['Normal', 100], ['Grande', 130], ['Muy grande', 160], ['Extra grande', 200]].map(([l, v]) => `<button class="btn" data-size="${v}">${l}</button>`).join('')}</div>
       <button class="btn ghost sm" id="sizeOk">Así está bien</button></div>` : ''}
+    ${shouldPrompt() ? `<div class="card easy-card"><h3>💬 ¿Te gustaría una versión Pro?</h3><p class="muted">Sincronizar con tu familia y respaldo en la nube. Cuéntanos si te interesaría; es anónimo y toma 10 segundos.</p>
+      <div class="row"><button class="btn primary sm" id="proYes">Responder</button><button class="btn ghost sm" id="proLater">Ahora no</button></div></div>` : ''}
     <h2 class="cap">${esc(monthLabel(mk))}</h2>
     <div class="kpis">
       <div class="kpi income"><small>Ingresos</small><b>${money(s.income)}</b></div>
@@ -48,6 +52,10 @@ export async function render(el) {
   $$('[data-size]', el).forEach(b => {
     b.onclick = async () => { await setScale(+b.dataset.size); await DB.setSetting('sizeAsked', true); render(el); };
   });
+  const py = el.querySelector('#proYes');
+  if (py) py.onclick = async () => { if (await askInterest()) render(el); };
+  const pl = el.querySelector('#proLater');
+  if (pl) pl.onclick = async () => { await snooze(); render(el); };
   const ok = el.querySelector('#sizeOk');
   if (ok) ok.onclick = async () => { await DB.setSetting('sizeAsked', true); render(el); };
 }
