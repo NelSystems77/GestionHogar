@@ -3,5 +3,5 @@
 // Mientras apiKey esté vacía, la encuesta de interés queda desactivada.
 export const FIREBASE = {
   projectId: 'gestionhogar-a4488',
-  apiKey: ''   // <- pegar aquí la apiKey de la app web (Configuración del proyecto → Tus apps)
+  apiKey: 'AIzaSyDtBIsOecpUg_mgXBQkXnXPU6wm7Q15qN4'
 };
